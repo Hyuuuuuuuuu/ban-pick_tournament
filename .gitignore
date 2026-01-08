@@ -1,0 +1,12 @@
+# Bỏ qua thư viện nặng
+node_modules/
+/server/node_modules/
+/client/node_modules/
+
+# Bỏ qua file build
+dist/
+build/
+
+# Bỏ qua file log hệ thống
+*.log
+.DS_Store
