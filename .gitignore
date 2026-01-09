@@ -9,4 +9,6 @@ build/
 
 # Bỏ qua file log hệ thống
 *.log
-.DS_Store
+.DS_Store 
+
+.env

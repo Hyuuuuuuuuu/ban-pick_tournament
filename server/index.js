@@ -1,54 +1,61 @@
+// 1. CẤU HÌNH MÔI TRƯỜNG
+require('dotenv').config(); 
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const fs = require('fs');       // Thư viện đọc ghi file
-const path = require('path');   // Thư viện xử lý đường dẫn
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 
 // --- MIDDLEWARE ---
 app.use(cors());
-app.use(express.json()); // QUAN TRỌNG: Để đọc được dữ liệu JSON từ Client gửi lên
+app.use(express.json());
 
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", 
-    methods: ["GET", "POST"]
-  }
-});
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-// --- 1. ĐƯỜNG DẪN FILE DỮ LIỆU ---
+// --- ĐƯỜNG DẪN FILE DỮ LIỆU ---
 const DATA_DIR = path.join(__dirname, 'data');
 const SONGS_PATH = path.join(DATA_DIR, 'songs.json');
 const POOLS_PATH = path.join(DATA_DIR, 'pools.json');
+const PLAYERS_PATH = path.join(DATA_DIR, 'players.json');
 
-// --- 2. LOAD DỮ LIỆU ---
-// Load kho bài hát tổng (Bắt buộc phải có)
+// --- LOAD DỮ LIỆU (KHỞI ĐỘNG) ---
+// 1. Load Songs
 let allSongs = [];
 try {
     allSongs = require(SONGS_PATH);
-    console.log(`Đã load ${allSongs.length} bài hát từ songs.json`);
+    console.log(`[OK] Da load ${allSongs.length} bai hat tu songs.json`);
 } catch (e) {
-    console.error("LỖI: Không tìm thấy file songs.json!");
+    console.error("[ERROR] Khong tim thay file songs.json!");
 }
 
-// Load cấu hình Pool (Nếu chưa có thì tạo mặc định)
+// 2. Load Pools
 let pools = { round_8: [], round_4: [], final: [] };
 try {
     if (fs.existsSync(POOLS_PATH)) {
-        const rawData = fs.readFileSync(POOLS_PATH, 'utf8');
-        pools = JSON.parse(rawData);
-        console.log("Đã load file pools.json thành công.");
-    } else {
-        console.warn("Chưa có file pools.json, sẽ tạo mới khi lưu.");
+        pools = JSON.parse(fs.readFileSync(POOLS_PATH, 'utf8'));
     }
-} catch (e) {
-    console.error("Lỗi đọc file pools.json, sử dụng cấu hình rỗng.");
+} catch (e) { 
+    console.warn("[WARN] Chua co pools.json, su dung cau hinh mac dinh."); 
 }
 
-// --- 3. KHỞI TẠO GAME STATE ---
+// 3. Load Roster
+let playerRoster = [];
+try {
+    if (fs.existsSync(PLAYERS_PATH)) {
+        playerRoster = JSON.parse(fs.readFileSync(PLAYERS_PATH, 'utf8'));
+        console.log(`[OK] Da load ${playerRoster.length} tuyen thu.`);
+    }
+} catch (e) { 
+    console.warn("[WARN] Chua co players.json, danh sach rong."); 
+}
+
+
+// --- GAME STATE ---
 let gameState = {
   phase: 'SETUP', 
   pool: [],       
@@ -62,7 +69,7 @@ let gameState = {
 let timer = 30;
 let timerInterval = null;
 
-// --- 4. HÀM HỖ TRỢ ---
+// --- HÀM HỖ TRỢ ---
 const startTimer = (seconds) => {
   if (timerInterval) clearInterval(timerInterval);
   timer = seconds;
@@ -75,82 +82,100 @@ const startTimer = (seconds) => {
   }, 1000);
 };
 
-// --- 5. CÁC API (ENDPOINTS) ---
+// =========================================================
+// API ENDPOINTS
+// =========================================================
 
-// API: Lấy toàn bộ bài hát (Cho trang Editor tìm kiếm)
-app.get('/api/songs', (req, res) => {
-    res.json(allSongs);
-});
+// --- 1. LOGIN ---
+app.post('/api/login', (req, res) => {
+    const { username, password } = req.body;
+    const validUser = process.env.ADMIN_USER || "admin";
+    const validPass = process.env.ADMIN_PASS || "admin";
 
-// API: Lấy cấu hình Pool hiện tại (Cho trang Editor hiển thị)
-app.get('/api/pools', (req, res) => {
-    res.json(pools);
-});
-
-// API: LƯU CẤU HÌNH POOL MỚI (Từ trang Editor gửi về)
-app.post('/api/save-pools', (req, res) => {
-    try {
-        const newPools = req.body;
-        
-        // 1. Cập nhật bộ nhớ RAM server
-        pools = newPools; 
-
-        // 2. Ghi đè xuống file ổ cứng
-        fs.writeFileSync(POOLS_PATH, JSON.stringify(newPools, null, 2), 'utf8');
-        
-        console.log("Admin đã lưu cấu hình Pool mới!");
-        res.json({ success: true, message: "Đã lưu thành công!" });
-    } catch (err) {
-        console.error("Lỗi khi ghi file pools.json:", err);
-        res.status(500).json({ success: false, message: "Lỗi Server khi lưu file." });
+    if (username === validUser && password === validPass) {
+        console.log(`[AUTH] Admin da dang nhap thanh cong.`);
+        res.json({ success: true, message: "Login Success" });
+    } else {
+        console.log(`[AUTH] Login that bai (User: ${username})`);
+        res.status(401).json({ success: false, message: "Invalid Credentials" });
     }
 });
 
-// API: Cập nhật tên người chơi
+// --- 2. ROSTER ---
+app.get('/api/roster', (req, res) => {
+    res.json(playerRoster);
+});
+
+app.post('/api/roster', (req, res) => {
+    const { name } = req.body;
+    if (name && !playerRoster.includes(name)) {
+        playerRoster.push(name);
+        fs.writeFileSync(PLAYERS_PATH, JSON.stringify(playerRoster, null, 2), 'utf8');
+        console.log(`[ROSTER] Da them tuyen thu: ${name}`);
+        res.json({ success: true, roster: playerRoster });
+    } else {
+        res.status(400).json({ success: false, message: "Invalid Name" });
+    }
+});
+
+app.delete('/api/roster/:name', (req, res) => {
+    const { name } = req.params;
+    playerRoster = playerRoster.filter(p => p !== name);
+    fs.writeFileSync(PLAYERS_PATH, JSON.stringify(playerRoster, null, 2), 'utf8');
+    console.log(`[ROSTER] Da xoa tuyen thu: ${name}`);
+    res.json({ success: true, roster: playerRoster });
+});
+
+// --- 3. SONGS & POOLS ---
+app.get('/api/songs', (req, res) => res.json(allSongs));
+app.get('/api/pools', (req, res) => res.json(pools));
+
+app.post('/api/save-pools', (req, res) => {
+    try {
+        const newPools = req.body;
+        pools = newPools; 
+        fs.writeFileSync(POOLS_PATH, JSON.stringify(newPools, null, 2), 'utf8');
+        console.log("[DATA] Admin da luu file pools.json");
+        res.json({ success: true });
+    } catch (err) {
+        console.error("[ERROR] Loi khi luu file:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// --- 4. GAME CONTROL ---
 app.post('/api/update-players', (req, res) => {
     const { p1, p2 } = req.body;
     gameState.players = { p1: p1 || "Player 1", p2: p2 || "Player 2" };
-    io.emit('update_state', gameState); // Báo Tivi cập nhật ngay
+    io.emit('update_state', gameState);
+    console.log(`[MATCH] Cap nhat nguoi choi: ${gameState.players.p1} vs ${gameState.players.p2}`);
     res.json({ status: "success", players: gameState.players });
 });
 
-// API: Setup Vòng Đấu (Load bài từ Pool vào Game)
 app.get('/api/setup/:roundName', (req, res) => {
   const { roundName } = req.params;
 
-  // Kiểm tra vòng đấu có trong dữ liệu không
   if (!pools[roundName]) {
-    return res.status(404).send(`Lỗi: Không tìm thấy vòng "${roundName}"`);
+    console.error(`[ERROR] Khong tim thay vong dau: ${roundName}`);
+    return res.status(404).send("Round not found");
   }
 
   const targetIds = pools[roundName];
-
-  // Lọc lấy thông tin chi tiết bài hát từ ID
   let selectedSongs = allSongs.filter(song => targetIds.includes(song.id));
-  console.log(`✅ Tìm thấy thông tin của: ${selectedSongs.length} bài.`);
 
   if (selectedSongs.length === 0) {
-    console.log(" Pool rỗng!");
-    return res.status(400).send(` Vòng "${roundName}" chưa có bài nào. Hãy vào mục Chỉnh Sửa Pool để thêm bài.`);
+    console.warn(`[WARN] Vong ${roundName} chua co bai hat nao.`);
+    return res.status(400).send("Empty Pool");
   }
-  
 
-  // Chỉ random nếu số lượng bài trong pool lớn hơn 10
+  // Random logic
   if (selectedSongs.length > 10) {
-      console.log(" Số lượng > 10. Đang tiến hành Random...");
-      
-      // Trộn ngẫu nhiên
+      console.log(`[SYSTEM] Random 10 bai tu pool ${selectedSongs.length} bai.`);
       selectedSongs = selectedSongs.sort(() => 0.5 - Math.random());
-      
-      // Cắt lấy 10 bài đầu
       selectedSongs = selectedSongs.slice(0, 10);
-      
-      console.log(` Đã cắt xuống còn 10 bài.`);
-  } else {
-      console.log(`Số lượng (${selectedSongs.length}) <= 10 nên lấy tất cả (Không random).`);
   }
 
-  // Reset Game State
+  // Reset State
   gameState.phase = 'BAN_PHASE';
   gameState.pool = selectedSongs;
   gameState.banned_ids = [];
@@ -161,33 +186,39 @@ app.get('/api/setup/:roundName', (req, res) => {
   io.emit('update_state', gameState);
   startTimer(30);
 
-  console.log(`SETUP: ${roundName} (${selectedSongs.length} bài)`);
-  res.send(`Đã thiết lập: ${roundName}`);
+  console.log(`[SETUP] Da thiet lap vong: ${roundName} (${selectedSongs.length} bai)`);
+  res.send(`Setup Complete: ${roundName}`);
 });
 
-// --- 6. SOCKET.IO ---
+// =========================================================
+// SOCKET.IO
+// =========================================================
 io.on('connection', (socket) => {
-  console.log(' Client kết nối:', socket.id);
+  console.log(`[CONNECT] Client ID: ${socket.id}`);
   
-  // Gửi trạng thái hiện tại ngay khi kết nối
   socket.emit('update_state', gameState);
   socket.emit('timer_tick', timer);
 
-  // Xử lý sự kiện BAN (Từ Mobile App)
   socket.on('ban_song', (songId) => {
     if (gameState.phase !== 'BAN_PHASE') return;
     
     if (!gameState.banned_ids.includes(songId)) {
       gameState.banned_ids.push(songId);
       io.emit('update_state', gameState);
+      console.log(`[ACTION] Ban bai hat ID: ${songId}`);
     }
   });
 
-  socket.on('disconnect', () => {});
+  socket.on('disconnect', () => {
+      // console.log(`[DISCONNECT] Client ID: ${socket.id}`); // Bỏ comment nếu muốn hiện log ngắt kết nối
+  });
 });
 
-// --- 7. CHẠY SERVER ---
-server.listen(3001, () => {
-  console.log(' SERVER ĐANG CHẠY');
-  console.log(' Dashboard: http://localhost:3000/dashboard');
+// =========================================================
+// START SERVER
+// =========================================================
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, () => {
+  console.log(`[SYSTEM] SERVER DANG CHAY TAI PORT ${PORT}`);
+  console.log(`[SYSTEM] Dashboard: http://localhost:3000`);
 });
