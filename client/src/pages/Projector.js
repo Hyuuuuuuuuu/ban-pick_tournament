@@ -4,7 +4,7 @@ import SmartImage from '../components/SmartImage';
 import '../App.css'; 
 
 const socket = io.connect("http://localhost:3001");
-
+const SERVER_URL = "http://localhost:3001";
 const Projector = () => {
   const [gameState, setGameState] = useState({
     phase: 'SETUP', pool: [], banned_ids: [], 
@@ -43,7 +43,7 @@ const Projector = () => {
       if (animationRef.current) { clearInterval(animationRef.current); animationRef.current = null; }
       if (gameState.phase === 'READY') setHighlightedId(null); 
     }
-  }, [gameState.phase]);
+  }, [gameState.phase, gameState.pool, gameState.banned_ids, gameState.p1_pick, gameState.p2_pick]);
 
   const getCardClass = (song) => {
     let classes = "song-card";
@@ -55,7 +55,7 @@ const Projector = () => {
   };
 
   const getTypeLogo = (type) => {
-      const imgPath = type === 'DX' ? '/assets/music_dx.png' : '/assets/music_standard.png';
+      const imgPath = type === 'DX' ? `${SERVER_URL}/assets/music_dx.png` : `${SERVER_URL}/assets/music_standard.png`;
       return <img src={imgPath} alt={type} style={{position: 'absolute', top: 0, left: 0, width: '50px', zIndex: 5, filter: 'drop-shadow(2px 2px 2px rgba(0,0,0,0.5))'}} />;
   };
 
@@ -102,18 +102,19 @@ const Projector = () => {
                         <div className={getCardClass(song)} style={{height: '100%', margin: 0, border: 'none', position: 'relative'}}>
                             {getTypeLogo(song.type)}
                             <SmartImage song={song} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                            
                             {gameState.banned_ids.includes(song.id) && <div className="status-label ban-label">BANNED</div>}
                             {gameState.p1_pick?.id === song.id && <div className="status-label pick-label" style={{backgroundColor: '#ff4d4f'}}>P1 PICK</div>}
                             {gameState.p2_pick?.id === song.id && <div className="status-label pick-label" style={{backgroundColor: '#1890ff'}}>P2 PICK</div>}
                             
+                            {/* NHÃN DECIDER CHO BÀI RANDOM CUỐI CÙNG (DÒNG MỚI) */}
+                            {gameState.phase === 'READY' && gameState.decider_song?.id === song.id && <div className="status-label decider-label">DECIDER</div>}
+
                             <div className="song-info">
                                 <div className="song-title">{song.title}</div>
                                 <div className="song-level" style={{display: 'flex', gap: 5, justifyContent: 'center', fontWeight: 'bold'}}>
-                                    
-                                    {/* CẬP NHẬT: Cả Lv và Diff dùng chung màu */}
                                     <span style={{color: getDiffTextColor(song.difficulty)}}>Lv.{song.level}</span>
                                     <span style={{color: getDiffTextColor(song.difficulty)}}>{song.difficulty}</span>
-
                                 </div>
                             </div>
                         </div>

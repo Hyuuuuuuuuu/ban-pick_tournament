@@ -16,7 +16,7 @@ const PoolManager = ({ allSongs }) => {
 
   const [editingSong, setEditingSong] = useState(null); 
   const [editForm, setEditForm] = useState({});
-
+  const SERVER_URL = "http://localhost:3001"
   useEffect(() => {
     fetch('http://localhost:3001/api/pools').then(res => res.json()).then(data => { if(data) setPoolConfig(data); });
   }, []);
@@ -46,7 +46,7 @@ const PoolManager = ({ allSongs }) => {
   };
 
   const getTypeLogo = (type) => {
-      const imgPath = type === 'DX' ? '/assets/music_dx.png' : '/assets/music_standard.png';
+      const imgPath = type === 'DX' ? `${SERVER_URL}/assets/music_dx.png` : `${SERVER_URL}/assets/music_standard.png`;
       return <img src={imgPath} alt={type} style={{position: 'absolute', top: 0, left: 0, width: 35, zIndex: 2, filter: 'drop-shadow(1px 1px 2px rgba(0,0,0,0.5))'}} />;
   };
 
